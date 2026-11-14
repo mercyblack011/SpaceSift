@@ -145,12 +145,6 @@ public partial class MainWindow : Window
         if (DriveBox.SelectedItem is DriveItem d) await StartScan(d.Root, FastMode.IsChecked == true);
     }
 
-    private async void Folder_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Choose a folder to scan" };
-        if (dlg.ShowDialog(this) == true) await StartScan(dlg.FolderName, false);
-    }
-
     private void Stop_Click(object sender, RoutedEventArgs e) => _scanCts?.Cancel();
 
     private async Task StartScan(string root, bool mft)
@@ -248,7 +242,6 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         ScanButton.IsEnabled = !busy;
-        FolderButton.IsEnabled = !busy;
         DriveBox.IsEnabled = !busy;
         StopButton.IsEnabled = busy;
         UpdateEmptyStates(busy);
@@ -679,9 +672,10 @@ public partial class MainWindow : Window
         (PageTitle.Text, PageSub.Text) = Tabs.SelectedIndex switch
         {
             0 => ("Clean Up", $"Junk on {d}, cleaned safely in one click"),
-            1 => ("Apps", $"Programs installed on {d}, and everything they leave behind"),
+            1 => ("Apps", "Every program installed on this PC, and everything it leaves behind"),
             2 => ("Disk Map", _scan == null ? $"See exactly what fills {d}" : $"What fills {_scan.RootPath}"),
             3 => ("Files", _scan == null ? $"Every file on {d}" : $"Every file in {_scan.RootPath}, searchable and sortable"),
+            4 => ("Organize", "Sort a messy folder into tidy folders by file type"),
             _ => ("About", "SpaceSift Disk Studio"),
         };
     }

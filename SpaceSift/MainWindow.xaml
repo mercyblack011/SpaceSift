@@ -126,6 +126,9 @@
                             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8A5;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="Files" FontWeight="SemiBold"/></StackPanel>
                         </ListBoxItem>
                         <ListBoxItem>
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="Organize" FontWeight="SemiBold"/></StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
                             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE946;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="About" FontWeight="SemiBold"/></StackPanel>
                         </ListBoxItem>
                     </ListBox>
@@ -149,9 +152,6 @@
                     <Button x:Name="ForceButton" Click="ForceDeleteMenu_Click" Style="{StaticResource Ghost}" Margin="0,0,6,0"
                             ToolTip="Force delete any file or folder, even if a program is using it (the program is closed first)">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8BB;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Force delete"/></StackPanel>
-                    </Button>
-                    <Button x:Name="FolderButton" Click="Folder_Click" ToolTip="Scan a single folder">
-                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Folder"/></StackPanel>
                     </Button>
                     <Button x:Name="StopButton" Click="Stop_Click" IsEnabled="False">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE71A;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Stop"/></StackPanel>
@@ -754,6 +754,91 @@
                         </Border>
                     </DockPanel>
                 </Grid>
+                </TabItem>
+
+                <!-- ======================= ORGANIZE FOLDER ======================= -->
+                <TabItem x:Name="TabOrganize" Header="Organize">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+
+                        <!-- empty state: no folder chosen yet -->
+                        <Border x:Name="OrgEmpty" Grid.RowSpan="2" Panel.ZIndex="10" Style="{StaticResource Card}" Padding="40">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="500">
+                                <Border Width="84" Height="84" CornerRadius="24" Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource GlassEdge}" BorderThickness="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" FontSize="36" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="Tidy up a messy folder" Style="{StaticResource H1}" FontSize="26" HorizontalAlignment="Center" Margin="0,20,0,0"/>
+                                <TextBlock Style="{StaticResource Sub}" TextAlignment="Center" Margin="0,8,0,0" FontSize="13.5"
+                                           Text="Pick a folder like Downloads or Desktop. SpaceSift puts every file into a folder for its kind, named in plain words with its size, like &quot;Audio (5 GB)&quot; or &quot;Pictures (1.2 GB)&quot;. You can undo it."/>
+                                <Button Style="{StaticResource Primary}" Click="OrgChoose_Click" HorizontalAlignment="Center" Margin="0,24,0,0" Padding="24,11">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DA;" Style="{StaticResource Icon}" Margin="0,0,9,0"/><TextBlock Text="Choose a folder" FontSize="14"/></StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- hero -->
+                        <DockPanel x:Name="OrgHero" Margin="4,4,4,18" Visibility="Hidden">
+                            <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                                <Button x:Name="OrgButton" Style="{StaticResource Primary}" Click="OrgRun_Click" IsEnabled="False" Margin="0" Padding="22,11" HorizontalAlignment="Right">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8CB;" Style="{StaticResource Icon}" Margin="0,0,9,0"/><TextBlock x:Name="OrgButtonText" Text="Organize" FontSize="14" FontWeight="SemiBold"/></StackPanel>
+                                </Button>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                    <Button x:Name="OrgUndoButton" Style="{StaticResource Ghost}" Click="OrgUndo_Click" Visibility="Collapsed" Margin="0,0,6,0">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7A7;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Undo"/></StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource Ghost}" Click="OrgOpen_Click" Margin="0,0,6,0">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE838;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Open"/></StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource Ghost}" Click="OrgChoose_Click" Margin="0">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DA;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Choose another folder"/></StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel>
+                                <WrapPanel>
+                                    <TextBlock x:Name="OrgHeadline" Text="0 files" FontFamily="{StaticResource DisplayFont}" FontSize="48" FontWeight="Bold"/>
+                                    <TextBlock x:Name="OrgHeadSuffix" Text="to sort" FontSize="20" Foreground="{DynamicResource Muted}" VerticalAlignment="Bottom" Margin="12,0,0,10"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="OrgPath" FontWeight="SemiBold" FontSize="13.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                <TextBlock x:Name="OrgSummary" Style="{StaticResource Sub}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- one row per new folder -->
+                        <Border x:Name="OrgListCard" Grid.Row="1" Style="{StaticResource Card}" Padding="6" Visibility="Hidden">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="OrgList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="Row" CornerRadius="12" Padding="14,11" Margin="2" Background="Transparent">
+                                                <DockPanel>
+                                                    <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="12" Background="{DynamicResource Surface2}" Margin="0,0,14,0">
+                                                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="18" HorizontalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" MinWidth="110">
+                                                        <TextBlock Text="{Binding SizeText}" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Right"/>
+                                                        <TextBlock Text="{Binding CountText}" Foreground="{DynamicResource Muted}" FontSize="11.5" HorizontalAlignment="Right"/>
+                                                    </StackPanel>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Foreground="{DynamicResource FolderIcon}" Margin="0,0,7,0"/>
+                                                            <TextBlock Text="{Binding FolderName}" FontWeight="SemiBold" FontSize="13.5"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Example}" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover}"/>
+                                                </Trigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
                 </TabItem>
 
                 <!-- ======================= ABOUT ======================= -->

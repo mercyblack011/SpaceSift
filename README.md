@@ -21,8 +21,8 @@ Go to [Releases](https://github.com/mercyblack011/SpaceSift/releases/latest) and
 
 | File | What it is |
 |---|---|
-| `SpaceSift-Setup-1.1.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
-| `SpaceSift-1.1.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
+| `SpaceSift-Setup-1.2.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
+| `SpaceSift-1.2.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
 
 No .NET install is needed; everything is included.
 
@@ -35,7 +35,8 @@ No .NET install is needed; everything is included.
 - **Disk Map**: folder tree sorted by size, file types as list / pie / donut, and a treemap where every block is a file. Double-click to zoom in.
 - **Files**: every file on the drive with search, size and date filters, and file-type icons.
 - **Disk Map** draws a cushion treemap: every file is a lit block, every folder has a title bar with its name and size.
-- **Partitions**: pick a drive in the sidebar and every page (Clean Up, Apps, Disk Map, Files) shows results for that drive only.
+- **Partitions**: pick a drive in the sidebar and Clean Up, Disk Map and Files show results for that drive only. Apps always lists every program on the PC.
+- **Organize**: pick a messy folder (Downloads, Desktop …) and SpaceSift sorts its files into plainly named folders with their size, like `Audio (5 GB)`, `Pictures (1.2 GB)`, `PDF files (400 MB)`. Running it again merges new files in and updates the sizes. One click undoes it.
 - **Force delete**: delete any file or folder even when a program is using it. SpaceSift shows which programs hold it open, closes them, then deletes it (as admin, stubborn files are removed at the next restart).
 - **Fast mode** (on by default): reads the NTFS Master File Table directly for a much faster scan. It asks once to restart as administrator. The header shows a real 0–100% progress bar for scans, cleaning, uninstalls and force delete.
 - Right-click anything to open it, show it in Explorer, copy its path, see its properties, or delete it.

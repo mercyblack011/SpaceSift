@@ -99,7 +99,6 @@ public partial class MainWindow
         UpdatePageTitle();
         StatusText.Text = _scan != null ? $"Showing {DriveName(drive)}." : $"Showing {DriveName(drive)}. Press Scan drive to map it.";
         _ = ScanJunk();
-        if (_apps.Count > 0) ShowApps();
         LeftoverList.ItemsSource = null;
         LeftoverSummary.Text = $"Find folders on {drive.TrimEnd('\\')} that belong to no installed program.";
     }

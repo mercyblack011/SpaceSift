@@ -22,7 +22,7 @@
     <Copyright>Copyright © 2026 mercyblack011</Copyright>
     <AssemblyName>SpaceSift</AssemblyName>
     <RootNamespace>SpaceSift</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>SpaceSift Disk Analyzer</Product>
 
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>

@@ -196,10 +196,8 @@ public partial class MainWindow
         long maxSize = _apps.Count > 0 ? Math.Max(1, _apps.Max(a => a.Size)) : 1;
         foreach (var a in _apps) a.Fraction = (double)a.Size / maxSize;
         string q = AppSearch.Text.Trim();
-        // only programs installed on the selected partition (apps with no known folder count as the Windows drive)
-        string drive = SelectedDrive;
-        bool system = string.Equals(drive, JunkScanner.SystemDrive, StringComparison.OrdinalIgnoreCase);
-        IEnumerable<AppInfo> list = _apps.Where(a => a.HasFolder ? OnDrive(a.InstallLocation, drive) : system);
+        // always every installed program, whichever partition is picked
+        IEnumerable<AppInfo> list = _apps;
         if (q.Length > 0)
             list = list.Where(a => a.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || a.Publisher.Contains(q, StringComparison.OrdinalIgnoreCase));
         Func<AppInfo, object> key = _appSort switch
@@ -215,9 +213,7 @@ public partial class MainWindow
         var selected = AppList.SelectedItem;
         AppList.ItemsSource = sorted;
         if (selected != null && sorted.Contains(selected)) AppList.SelectedItem = selected;
-        AppsSummary.Text = sorted.Count == 0 && q.Length == 0
-            ? $"No programs are installed on {drive.TrimEnd('\\')}."
-            : $"{sorted.Count:N0} programs on {drive.TrimEnd('\\')} · {Fmt.Size(sorted.Sum(a => a.Size))}";
+        AppsSummary.Text = $"{sorted.Count:N0} programs installed · {Fmt.Size(sorted.Sum(a => a.Size))}";
     }
 
     private void AppSearch_Changed(object sender, TextChangedEventArgs e) => ShowApps();

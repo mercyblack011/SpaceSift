@@ -5,7 +5,7 @@
 ; Build:  ISCC.exe installer\SpaceSift.iss   (after: dotnet publish ... -o publish)
 
 #define AppName      "SpaceSift"
-#define AppVersion   "1.1.0"
+#define AppVersion   "1.2.0"
 #define AppPublisher "mercyblack011"
 #define AppURL       "https://github.com/mercyblack011/SpaceSift"
 #define AppExe       "SpaceSift.exe"
