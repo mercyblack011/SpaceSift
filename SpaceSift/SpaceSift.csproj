@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- 64-bit only, Windows 10 (1809+) and Windows 11 -->
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Company>mercyblack011</Company>
+    <Description>SpaceSift Disk Studio – find and free disk space on Windows</Description>
+    <Copyright>Copyright © 2026 mercyblack011</Copyright>
+    <AssemblyName>SpaceSift</AssemblyName>
+    <RootNamespace>SpaceSift</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>SpaceSift Disk Analyzer</Product>
+
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\mark.png" />
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+</Project>

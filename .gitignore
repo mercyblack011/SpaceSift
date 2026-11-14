@@ -1,0 +1,15 @@
+# build output
+bin/
+obj/
+publish/
+dist/
+*.zip
+
+# local screenshots (may contain personal paths) - curated ones live in docs/
+screenshots/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo

@@ -1,0 +1,8 @@
+<Project>
+  <!-- WPF's XAML compiler breaks when obj\ paths pass 260 characters.
+       If the project sits in a deep folder, build into a short folder instead. -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Length) &gt; 110">
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\SpaceSift.build\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(LOCALAPPDATA)\SpaceSift.build\bin\</BaseOutputPath>
+  </PropertyGroup>
+</Project>
