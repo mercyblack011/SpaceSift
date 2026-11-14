@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Threading;
 using SpaceSift.Core;
 
@@ -24,7 +24,9 @@ public partial class App : Application
             File.AppendAllText(Path.Combine(dir, "errors.log"), $"{DateTime.Now:u} {e.Exception}\r\n\r\n");
         }
         catch { }
-        MessageBox.Show(e.Exception.Message, "SpaceSift", MessageBoxButton.OK, MessageBoxImage.Error);
+        try { UI.AppDialog.Alert(null, "Something went wrong", e.Exception.Message + "\n\nDetails were saved to %LOCALAPPDATA%\\SpaceSift\\errors.log.", UI.DialogKind.Warning); }
+        catch { MessageBox.Show(e.Exception.Message, "SpaceSift", MessageBoxButton.OK, MessageBoxImage.Error); }
         e.Handled = true;
     }
 }
+

@@ -34,8 +34,25 @@ public partial class UninstallDialog : Window
             EmptyText.Visibility = Visibility.Visible;
         }
         UpdateTexts();
-        // dialog content fades and glides in
-        Loaded += (_, _) => { if (Content is UIElement c) SpaceSift.UI.Motion.FadeIn(c, 320, 12); };
+        Loaded += (_, _) =>
+        {
+            if (!SpaceSift.UI.Motion.Enabled) return;
+            Scrim.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
+            CardBorder.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
+            var spring = new SpaceSift.UI.SpringEase { Damping = 0.78, Response = 0.38 };
+            var grow = new System.Windows.Media.Animation.DoubleAnimation(0.92, 1, TimeSpan.FromSeconds(SpaceSift.UI.SpringEase.SettleTime(0.78, 0.38))) { EasingFunction = spring };
+            var st = (System.Windows.Media.ScaleTransform)CardBorder.RenderTransform;
+            st.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
+            st.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
+        };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) DialogResult = false; };
+    }
+
+    /// <summary>Opens as a popup card over the main window.</summary>
+    public new bool? ShowDialog()
+    {
+        SpaceSift.UI.AppDialog.CoverOwner(this, Owner);
+        return base.ShowDialog();
     }
 
     /// <summary>True when the user picked "uninstall and remove all connected folders".</summary>
@@ -63,3 +80,4 @@ public partial class UninstallDialog : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e) => DialogResult = true;
 }
+

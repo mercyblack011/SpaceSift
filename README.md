@@ -21,8 +21,8 @@ Go to [Releases](https://github.com/mercyblack011/SpaceSift/releases/latest) and
 
 | File | What it is |
 |---|---|
-| `SpaceSift-Setup-1.0.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
-| `SpaceSift-1.0.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
+| `SpaceSift-Setup-1.1.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
+| `SpaceSift-1.1.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
 
 No .NET install is needed; everything is included.
 
@@ -34,7 +34,10 @@ No .NET install is needed; everything is included.
 - **Apps**: installed programs with icons and sizes. Select one to see every connected folder, shortcut and registry entry. Uninstall the program only, or the program **and** all its connected folders (moved to the Recycle Bin). Finds leftover folders from removed apps.
 - **Disk Map**: folder tree sorted by size, file types as list / pie / donut, and a treemap where every block is a file. Double-click to zoom in.
 - **Files**: every file on the drive with search, size and date filters, and file-type icons.
-- **Fast mode**: reads the NTFS Master File Table directly (needs administrator rights) for a much faster scan.
+- **Disk Map** draws a cushion treemap: every file is a lit block, every folder has a title bar with its name and size.
+- **Partitions**: pick a drive in the sidebar and every page (Clean Up, Apps, Disk Map, Files) shows results for that drive only.
+- **Force delete**: delete any file or folder even when a program is using it. SpaceSift shows which programs hold it open, closes them, then deletes it (as admin, stubborn files are removed at the next restart).
+- **Fast mode** (on by default): reads the NTFS Master File Table directly for a much faster scan. It asks once to restart as administrator. The header shows a real 0–100% progress bar for scans, cleaning, uninstalls and force delete.
 - Right-click anything to open it, show it in Explorer, copy its path, see its properties, or delete it.
 
 ## Design

@@ -94,6 +94,7 @@ public static class ThemeManager
     /// </summary>
     public static void TintTitleBar(Window w)
     {
+        if (w.AllowsTransparency) return; // custom popups draw their own frame
         var hwnd = new WindowInteropHelper(w).Handle;
         if (hwnd == IntPtr.Zero) return;
         int dark = IsDark ? 1 : 0;

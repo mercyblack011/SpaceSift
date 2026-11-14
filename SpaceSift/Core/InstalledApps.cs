@@ -457,8 +457,9 @@ public static class InstalledApps
     /// Folders in Program Files / ProgramData / AppData whose name matches no installed app.
     /// A heuristic: everything here should be checked by the user before deleting.
     /// </summary>
-    public static List<LeftoverFolder> FindLeftovers(List<AppInfo> apps, CancellationToken ct, long minSize = 5L << 20)
+    public static List<LeftoverFolder> FindLeftovers(List<AppInfo> apps, CancellationToken ct, string? drive = null, long minSize = 5L << 20)
     {
+        drive ??= Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
         var tokens = new HashSet<string>();
         var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in apps)
@@ -484,11 +485,18 @@ public static class InstalledApps
             (Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ProgramData"),
             (Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AppData\\Roaming"),
             (Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AppData\\Local"),
+            // the same folders on other drives (people often install to D:\Program Files, D:\Games …)
+            (Path.Combine(drive, "Program Files"), "Program Files"),
+            (Path.Combine(drive, "Program Files (x86)"), "Program Files (x86)"),
+            (Path.Combine(drive, "Games"), "Games"),
         };
 
         var result = new List<LeftoverFolder>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (root, label) in roots)
         {
+            // only the selected partition
+            if (!string.Equals(Path.GetPathRoot(root), drive, StringComparison.OrdinalIgnoreCase) || !seen.Add(root.TrimEnd('\\'))) continue;
             if (!Directory.Exists(root)) continue;
             string[] dirs;
             try { dirs = Directory.GetDirectories(root); } catch { continue; }

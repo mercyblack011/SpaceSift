@@ -81,7 +81,7 @@ public partial class MainWindow : Window
         foreach (var d in DateFilters) DateFilter.Items.Add(d.Label);
         DateFilter.SelectedIndex = 0;
 
-        FastMode.IsChecked = NativeMethods.IsAdministrator();
+        FastMode.IsChecked = true; // fast (MFT) scanning is the default; it asks for admin once when needed
         AboutVersion.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)} · 64-bit · {(NativeMethods.IsAdministrator() ? "running as administrator" : "running as standard user")}";
 
         Treemap.ItemClicked += i => { RevealInTree(i); };
@@ -109,7 +109,7 @@ public partial class MainWindow : Window
         Motion.FadeOnTextChange(StatusText);
         Motion.FadeOnTextChange(PageSub);
         UpdateSummary(((DriveItem?)DriveBox.SelectedItem)?.Root);
-        DriveBox.SelectionChanged += (_, _) => UpdateSummary(((DriveItem?)DriveBox.SelectedItem)?.Root);
+        DriveBox.SelectionChanged += (_, _) => { if (IsLoaded) DriveBox_Changed(); };
     }
 
     private async void OnLoaded(object? sender, RoutedEventArgs e)
@@ -163,12 +163,12 @@ public partial class MainWindow : Window
         }
         if (mft && !NativeMethods.IsAdministrator())
         {
-            var answer = MessageBox.Show(this,
-                "Fast mode reads the Master File Table and needs administrator rights.\n\n" +
-                "Yes: restart SpaceSift as administrator and scan in fast mode.\nNo: scan now in normal mode.",
-                "Fast mode", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (answer == MessageBoxResult.Cancel) return;
-            if (answer == MessageBoxResult.Yes)
+            int answer = AppDialog.Show(this, DialogKind.Question, "Scan in fast mode?",
+                "Fast mode reads the drive's file table directly, so a full drive is mapped in seconds. " +
+                "Windows only allows that for administrators, so SpaceSift restarts once with administrator rights.",
+                new[] { "Cancel", "Normal scan", "Restart as admin" }, defaultButton: 2);
+            if (answer <= 0) return;
+            if (answer == 2)
             {
                 try
                 {
@@ -189,15 +189,21 @@ public partial class MainWindow : Window
         var ct = _scanCts.Token;
         var progress = new ScanProgress();
         SetBusy(true);
-        Progress.IsIndeterminate = !mft;
-        Progress.BeginAnimation(System.Windows.Controls.Primitives.RangeBase.ValueProperty, null); Progress.Value = 0;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        TaskBegin($"Scanning {root.TrimEnd('\\')}");
+        // real percentage: MFT records read, or bytes found vs. the drive's used space
+        long usedBytes = 0;
+        if (isDriveRoot && NativeMethods.GetDiskFreeSpaceExW(root, out _, out ulong tot, out ulong totFree)) usedBytes = (long)(tot - totFree);
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         var sw = Stopwatch.StartNew();
         timer.Tick += (_, _) =>
         {
-            if (progress.Fraction >= 0) { Progress.IsIndeterminate = false; Motion.Glide(Progress, progress.Fraction); }
-            else Progress.IsIndeterminate = true;
-            StatusText.Text = $"{progress.Phase}… {Interlocked.Read(ref progress.Items):N0} items · {Fmt.Size(Interlocked.Read(ref progress.Bytes))} · {sw.Elapsed.TotalSeconds:0.0}s";
+            long bytes = Interlocked.Read(ref progress.Bytes), items = Interlocked.Read(ref progress.Items);
+            double f;
+            if (progress.Phase == "Building tree") f = _taskShown + (0.99 - _taskShown) * 0.12;   // last few %: building the tree
+            else if (progress.Fraction >= 0) f = progress.Fraction * 0.9;                          // MFT: records read
+            else if (usedBytes > 0) f = Math.Min(0.9, (double)bytes / usedBytes * 0.9);             // folder scan of a drive
+            else f = 0.9 * (1 - Math.Exp(-items / 120000.0));                                        // single folder: estimate
+            TaskProgress(f, $"{progress.Phase}… {items:N0} items · {Fmt.Size(bytes)} · {sw.Elapsed.TotalSeconds:0.0}s");
         };
         timer.Start();
 
@@ -229,14 +235,14 @@ public partial class MainWindow : Window
         {
             timer.Stop();
             SetBusy(false);
-            Progress.IsIndeterminate = false;
         }
 
         if (result != null)
         {
-            Motion.Glide(Progress, 1, 300);
             LoadResult(result);
+            TaskEnd();
         }
+        else TaskEnd(null, success: false);
     }
 
     private void SetBusy(bool busy)
@@ -246,7 +252,6 @@ public partial class MainWindow : Window
         DriveBox.IsEnabled = !busy;
         StopButton.IsEnabled = busy;
         UpdateEmptyStates(busy);
-        Motion.FadeTo(Progress, busy ? 1 : 0, busy ? 200 : 900);
     }
 
     /// <summary>Disk Map / Files show a friendly "scan your drive" card until there is data.</summary>
@@ -255,11 +260,11 @@ public partial class MainWindow : Window
         bool empty = _scan == null;
         foreach (var (panel, title, button, idle) in new[]
         {
-            (MapEmpty, MapEmptyTitle, MapEmptyButton, "Map your drive"),
-            (FilesEmpty, FilesEmptyTitle, FilesEmptyButton, "See every file"),
+            (MapEmpty, MapEmptyTitle, MapEmptyButton, $"Map {SelectedDrive.TrimEnd('\\')}"),
+            (FilesEmpty, FilesEmptyTitle, FilesEmptyButton, $"See every file on {SelectedDrive.TrimEnd('\\')}"),
         })
         {
-            title.Text = busy ? "Scanning your drive…" : idle;
+            title.Text = busy ? $"Scanning {SelectedDrive.TrimEnd('\\')}…" : idle;
             button.IsEnabled = !busy;
             // hide the empty panels behind the card so the page reads as one clean message
             if (panel.Parent is Panel host)
@@ -270,7 +275,16 @@ public partial class MainWindow : Window
                         if (show && sibling.Visibility != Visibility.Visible) { sibling.Visibility = Visibility.Visible; Motion.FadeIn(sibling, 420, 10, 120); }
                         else if (!show) sibling.Visibility = Visibility.Hidden;
                     }
-            if (empty) { panel.Visibility = Visibility.Visible; continue; }
+            if (empty)
+            {
+                bool wasHidden = panel.Visibility != Visibility.Visible;
+                panel.LayoutTransform = Transform.Identity;   // undo a previous fold-away
+                panel.BeginAnimation(OpacityProperty, null);
+                panel.Opacity = 1;
+                panel.Visibility = Visibility.Visible;
+                if (wasHidden) Motion.FadeIn(panel, 320, 8);
+                continue;
+            }
             if (panel.Visibility == Visibility.Visible)
                 _ = Motion.Collapse(panel, 380); // scan finished: the card folds away to reveal the results
         }
@@ -279,8 +293,21 @@ public partial class MainWindow : Window
     /// <summary>Short confirmation shown in the status line.</summary>
     public void ShowToast(string message) => StatusText.Text = message;
 
-    private void LoadResult(ScanResult r)
+    private void LoadResult(ScanResult r, bool fromCache = false)
     {
+        string drive = Path.GetPathRoot(r.RootPath) ?? r.RootPath;
+        _scansByDrive[drive] = r;
+        // a folder scanned on another partition switches the whole app to that partition
+        if (!string.Equals(drive, SelectedDrive, StringComparison.OrdinalIgnoreCase))
+        {
+            for (int i = 0; i < DriveBox.Items.Count; i++)
+                if (string.Equals(((DriveItem)DriveBox.Items[i]).Root, drive, StringComparison.OrdinalIgnoreCase))
+                {
+                    _scan = r; // so DriveBox_Changed keeps it
+                    DriveBox.SelectedIndex = i;
+                    break;
+                }
+        }
         _scan = r;
         _colors = new ExtColors(r);
         _expanded.Clear();
@@ -295,6 +322,7 @@ public partial class MainWindow : Window
         SumScan.Text = $"Scanned: {Fmt.Size(root.Size)} in {r.RootPath}";
         RecomputeAll(rebuildExtPanel: true);
         UpdateEmptyStates(false);
+        UpdatePageTitle();
     }
 
     private void UpdateSummary(string? root)
@@ -639,16 +667,23 @@ public partial class MainWindow : Window
     {
         if (e.OriginalSource != Tabs) return;
         if (NavList.SelectedIndex != Tabs.SelectedIndex) NavList.SelectedIndex = Tabs.SelectedIndex;
-        (PageTitle.Text, PageSub.Text) = Tabs.SelectedIndex switch
-        {
-            0 => ("Clean Up", "Free space safely in one click"),
-            1 => ("Apps", "Uninstall programs and clear everything they leave behind"),
-            2 => ("Disk Map", "See exactly what fills your drive"),
-            3 => ("Files", "Every file on the drive, searchable and sortable"),
-            _ => ("About", "SpaceSift Disk Studio"),
-        };
+        UpdatePageTitle();
         PlayPageTransition();
         if (Tabs.SelectedItem == TabFiles && _fileListDirty) RebuildFileList();
+    }
+
+    /// <summary>Every page says which partition it is showing.</summary>
+    private void UpdatePageTitle()
+    {
+        string d = DriveName(SelectedDrive);
+        (PageTitle.Text, PageSub.Text) = Tabs.SelectedIndex switch
+        {
+            0 => ("Clean Up", $"Junk on {d}, cleaned safely in one click"),
+            1 => ("Apps", $"Programs installed on {d}, and everything they leave behind"),
+            2 => ("Disk Map", _scan == null ? $"See exactly what fills {d}" : $"What fills {_scan.RootPath}"),
+            3 => ("Files", _scan == null ? $"Every file on {d}" : $"Every file in {_scan.RootPath}, searchable and sortable"),
+            _ => ("About", "SpaceSift Disk Studio"),
+        };
     }
 
     // =================================================================== navigation, theme, motion
@@ -857,6 +892,9 @@ public partial class MainWindow : Window
         bool canDelete = !sel.Contains(ScanResult.Root);
         menu.Items.Add(Item($"Delete to Recycle Bin ({Fmt.Size(size)})", "", () => Delete(sel, false), canDelete));
         menu.Items.Add(Item("Delete permanently…", "", () => Delete(sel, true), canDelete));
+        menu.Items.Add(Item("Force delete (close apps using it)…", "",
+            () => RunForceDelete(TopLevel(sel).Where(i => i != ScanResult.Root).Select(s.GetPath).ToList(),
+                                 p => { int k = s.FindPath(p); return k >= 0 ? s.Entries[k].Size : 0; }), canDelete));
         return true;
     }
 
@@ -883,16 +921,19 @@ public partial class MainWindow : Window
         long total = items.Sum(i => s.Entries[i].Size);
         var paths = items.Select(s.GetPath).ToList();
 
-        string list = string.Join("\n", paths.Take(8)) + (paths.Count > 8 ? $"\n… and {paths.Count - 8} more" : "");
+        var lines = items.Take(30).Select(i => new DialogLine(s.GetPath(i), Fmt.Size(s.Entries[i].Size), s.IsDir(i) ? "" : "")).ToList();
+        if (items.Count > 30) lines.Add(new DialogLine($"… and {items.Count - 30:N0} more"));
         string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         bool risky = paths.Any(p => p.StartsWith(winDir, StringComparison.OrdinalIgnoreCase)
                                  || p.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase));
-        string warn = risky ? "\n\nWARNING: this includes Windows or Program Files content. Deleting it can break Windows or installed apps." : "";
+        string warn = risky ? " Careful: this includes Windows or Program Files content, and deleting it can break Windows or installed apps." : "";
         string msg = permanent
-            ? $"Permanently delete {items.Count:N0} item(s), {Fmt.Size(total)}?\n\n{list}\n\nThis cannot be undone.{warn}"
-            : $"Move {items.Count:N0} item(s), {Fmt.Size(total)}, to the Recycle Bin?\n\n{list}{warn}";
-        if (MessageBox.Show(this, msg, permanent ? "Delete permanently" : "Delete to Recycle Bin",
-                MessageBoxButton.YesNo, permanent || risky ? MessageBoxImage.Warning : MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            ? "The files are removed for good. This cannot be undone." + warn
+            : "You can restore them from the Recycle Bin." + warn;
+        if (!AppDialog.Confirm(this,
+                permanent ? $"Permanently delete {items.Count:N0} item(s), {Fmt.Size(total)}?" : $"Move {items.Count:N0} item(s), {Fmt.Size(total)}, to the Recycle Bin?",
+                msg, permanent ? "Delete permanently" : "Move to Recycle Bin",
+                permanent || risky ? DialogKind.Danger : DialogKind.Question, lines, danger: permanent || risky))
             return;
 
         Mouse.OverrideCursor = Cursors.Wait;
@@ -920,6 +961,14 @@ public partial class MainWindow : Window
         UpdateSummary(s.RootPath);
         StatusText.Text = $"Deleted {removed:N0} of {items.Count:N0} item(s), {Fmt.Size(freed)} {(permanent ? "freed" : "moved to the Recycle Bin")}.";
         if (errors.Count > 0)
-            MessageBox.Show(this, string.Join("\n", errors.Take(15)), "Some items could not be deleted", MessageBoxButton.OK, MessageBoxImage.Warning);
+        {
+            int k = AppDialog.Show(this, DialogKind.Warning, "Some items could not be deleted",
+                "They are in use or need administrator rights. Force delete closes the programs using them and tries again.",
+                new[] { "Close", "Force delete" }, errors.Take(30).Select(e => new DialogLine(e, "", "")).ToList(), defaultButton: 0, dangerButton: 1);
+            var left = paths.Where(ShellOps.Exists).ToList();
+            if (k == 1 && left.Count > 0) RunForceDelete(left, p => { int x = s.FindPath(p); return x >= 0 ? s.Entries[x].Size : 0; });
+        }
+        else if (removed > 0 && removed == items.Count)
+            ShowToast($"{removed:N0} item(s) deleted · {Fmt.Size(freed)} {(permanent ? "freed" : "moved to the Recycle Bin")}");
     }
 }

@@ -150,6 +150,23 @@ public sealed class ScanResult
 
     public ReadOnlySpan<int> GetChildren(int i) => Children.AsSpan(Entries[i].ChildStart, Entries[i].ChildCount);
 
+    /// <summary>Index of a full path inside this scan, or -1.</summary>
+    public int FindPath(string path)
+    {
+        string root = RootPath.TrimEnd('\\');
+        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return -1;
+        int cur = Root;
+        foreach (var part in path.Substring(root.Length).Split('\\', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int next = -1;
+            foreach (int c in GetChildren(cur))
+                if (!IsDeleted(c) && NameSpan(c).Equals(part, StringComparison.OrdinalIgnoreCase)) { next = c; break; }
+            if (next < 0) return -1;
+            cur = next;
+        }
+        return cur;
+    }
+
     /// <summary>Builds child lists, aggregates folder totals bottom-up and sorts children by size.</summary>
     internal void FinishBuild()
     {

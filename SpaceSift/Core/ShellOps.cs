@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 
 namespace SpaceSift.Core;
@@ -8,13 +8,13 @@ public static class ShellOps
     public static void Open(string path)
     {
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Open", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception ex) { UI.AppDialog.Alert(null, "Could not open this", ex.Message, UI.DialogKind.Warning); }
     }
 
     public static void ShowInExplorer(string path)
     {
         try { Process.Start("explorer.exe", $"/select,\"{path}\""); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Show in Explorer", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception ex) { UI.AppDialog.Alert(null, "Could not show this in Explorer", ex.Message, UI.DialogKind.Warning); }
     }
 
     public static void CopyPath(IEnumerable<string> paths)
@@ -61,3 +61,4 @@ public static class ShellOps
 
     public static bool Exists(string p) => File.Exists(p) || Directory.Exists(p);
 }
+

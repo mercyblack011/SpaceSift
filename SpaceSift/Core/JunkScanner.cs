@@ -18,6 +18,8 @@ public sealed class JunkItem : INotifyPropertyChanged
     public Safety Safety { get; init; }
     public bool NeedsAdmin { get; init; }
     public bool IsRecycleBin { get; init; }
+    /// <summary>Drive whose Recycle Bin this is (null = all drives).</summary>
+    public string? RecycleRoot { get; init; }
     /// <summary>Folders whose contents are deleted (the folder itself is kept).</summary>
     public List<string> Folders { get; init; } = new();
     /// <summary>Individual files to delete.</summary>
@@ -48,6 +50,51 @@ public sealed class JunkItem : INotifyPropertyChanged
 public static class JunkScanner
 {
     private static string Env(Environment.SpecialFolder f) => Environment.GetFolderPath(f);
+
+    public static string SystemDrive => Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
+
+    private static bool OnDrive(string path, string drive) =>
+        string.Equals(Path.GetPathRoot(path), drive, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Junk that lives on <paramref name="drive"/> only (e.g. "D:\").</summary>
+    public static List<JunkItem> CreateItems(string drive)
+    {
+        var all = CreateItems();
+        var result = new List<JunkItem>();
+        foreach (var item in all)
+        {
+            if (item.IsRecycleBin)
+            {
+                // each drive has its own Recycle Bin
+                result.Add(new JunkItem
+                {
+                    Name = $"Recycle Bin ({drive.TrimEnd('\\')})", IsRecycleBin = true, RecycleRoot = drive, Safety = Safety.Safe,
+                    Description = item.Description, Glyph = item.Glyph, IsChecked = true,
+                });
+                continue;
+            }
+            item.Folders.RemoveAll(f => !OnDrive(f, drive));
+            item.Files.RemoveAll(f => !OnDrive(f, drive));
+            if (item.Folders.Count + item.Files.Count > 0) result.Add(item);
+        }
+        if (!string.Equals(drive, SystemDrive, StringComparison.OrdinalIgnoreCase))
+        {
+            // leftovers that also show up on data drives
+            result.Add(new JunkItem
+            {
+                Name = "Windows setup leftovers on this drive", Safety = Safety.Review, Glyph = "\uE7B8",
+                Description = "Upgrade and media-creation folders ($Windows.~BT, $Windows.~WS, $GetCurrent, ESD) that Windows Setup sometimes leaves on other drives.",
+                Folders = { Path.Combine(drive, "$Windows.~BT"), Path.Combine(drive, "$Windows.~WS"), Path.Combine(drive, "$GetCurrent"), Path.Combine(drive, "ESD") },
+            });
+            result.Add(new JunkItem
+            {
+                Name = "Temp folders on this drive", Safety = Safety.Review, Glyph = "\uE81C",
+                Description = "Temp and Tmp folders in the root of the drive. Some apps use them for downloads or builds, so check first.",
+                Folders = { Path.Combine(drive, "Temp"), Path.Combine(drive, "Tmp") },
+            });
+        }
+        return result;
+    }
 
     public static List<JunkItem> CreateItems()
     {
@@ -147,7 +194,7 @@ public static class JunkScanner
             var (s, c) = RunSta(() =>
             {
                 var info = new SHQUERYRBINFO { cbSize = Marshal.SizeOf<SHQUERYRBINFO>() };
-                return SHQueryRecycleBinW(null, ref info) == 0 ? (info.i64Size, info.i64NumItems) : (0L, 0L);
+                return SHQueryRecycleBinW(item.RecycleRoot, ref info) == 0 ? (info.i64Size, info.i64NumItems) : (0L, 0L);
             }, TimeSpan.FromSeconds(30), (0L, 0L));
             size = s; count = (int)c;
         }
@@ -183,7 +230,7 @@ public static class JunkScanner
         {
             long before = item.Size;
             // SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND
-            return RunSta(() => SHEmptyRecycleBinW(IntPtr.Zero, null, 0x7) == 0, TimeSpan.FromMinutes(10), false) ? before : 0;
+            return RunSta(() => SHEmptyRecycleBinW(IntPtr.Zero, item.RecycleRoot, 0x7) == 0, TimeSpan.FromMinutes(10), false) ? before : 0;
         }
         long freed = 0;
         bool topOnly = item.Extensions.Length > 0 && item.OlderThanDays > 0;
