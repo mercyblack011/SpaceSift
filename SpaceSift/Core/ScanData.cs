@@ -118,6 +118,12 @@ public sealed class ScanResult
     public int[] Children = Array.Empty<int>();
     public int[] Order = Array.Empty<int>();   // breadth-first order from the root (parents before children)
     public readonly string RootPath;
+    /// <summary>A phone / camera storage (view-only: Windows offers no normal delete for it).</summary>
+    public bool IsPhone;
+    /// <summary>The drive-list key this scan belongs to ("C:\", or "phone:…" for a phone storage).</summary>
+    public string? Key;
+    /// <summary>For a phone: the storage's shell path, to show folders in File Explorer.</summary>
+    public string? PhoneParsingPath;
     public readonly long ClusterSize;
     public readonly TimeSpan Elapsed;
     public readonly bool UsedMft;

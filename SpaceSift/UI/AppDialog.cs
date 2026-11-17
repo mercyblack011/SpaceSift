@@ -8,7 +8,8 @@ using System.Windows.Shapes;
 
 namespace SpaceSift.UI;
 
-public enum DialogKind { Info, Success, Warning, Danger, Question }
+/// <summary>Erase = Force delete (the Font Awesome eraser on the badge).</summary>
+public enum DialogKind { Info, Success, Warning, Danger, Question, Erase }
 
 /// <summary>One line in a dialog's detail list: text on the left, optional value on the right.</summary>
 public sealed record DialogLine(string Text, string Value = "", string Glyph = "");
@@ -74,7 +75,16 @@ public sealed class AppDialog : Window
         fill.Opacity = 1;
         ring.StrokeThickness = 0;
         icon.Foreground = Brushes.Black;
-        badge.Children.Add(fill); badge.Children.Add(ring); badge.Children.Add(icon);
+        // Force delete shows the eraser shape instead of a font glyph
+        FrameworkElement badgeIcon = icon;
+        if (kind == DialogKind.Erase)
+            badgeIcon = new System.Windows.Shapes.Path
+            {
+                Data = (Geometry)Application.Current.Resources["EraserIcon"], Fill = Brushes.Black, Stretch = Stretch.Uniform,
+                Width = 24, Height = 21, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1),
+            };
+        badge.Children.Add(fill); badge.Children.Add(ring); badge.Children.Add(badgeIcon);
         stack.Children.Add(badge);
 
         stack.Children.Add(new TextBlock
@@ -182,12 +192,12 @@ public sealed class AppDialog : Window
         Content = root;
 
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(-1); e.Handled = true; } };
-        Loaded += (_, _) => PlayIn(icon, big);
+        Loaded += (_, _) => PlayIn(badgeIcon, big);
     }
 
     // ------------------------------------------------------------------ motion
 
-    private void PlayIn(TextBlock icon, TextBlock? big)
+    private void PlayIn(FrameworkElement icon, TextBlock? big)
     {
         if (!Motion.Enabled) return;
         _scrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));

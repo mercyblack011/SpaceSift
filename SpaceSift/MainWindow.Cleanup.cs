@@ -34,6 +34,18 @@ public partial class MainWindow
         var cts = _junkCts = new CancellationTokenSource();
         string drive = SelectedDrive;
         foreach (var j in _junk) j.PropertyChanged -= Junk_PropertyChanged;
+        if (SelectedPhone is { } phone)
+        {
+            // phones in File transfer mode have no temp folders or Recycle Bin Windows can clean
+            _junk = new List<JunkItem>();
+            JunkList.ItemsSource = _junk;
+            JunkScanButton.IsEnabled = true;
+            JunkCleanButton.IsEnabled = false;
+            JunkHeadSuffix.Text = "to clean on a phone";
+            Motion.Count(JunkHeadline, 0, v => Fmt.Size((long)v), 300);
+            JunkSummary.Text = $"Clean Up works on drives. {phone.Device} is connected in File transfer mode: see what fills it in Disk Map and Files, and delete files on the phone itself or in File Explorer.";
+            return;
+        }
         _junk = JunkScanner.CreateItems(drive); // only junk that lives on the selected partition
         foreach (var j in _junk) j.PropertyChanged += Junk_PropertyChanged;
         JunkList.ItemsSource = _junk;
@@ -72,7 +84,7 @@ public partial class MainWindow
         // numbers count to their new value instead of jumping
         JunkHeadSuffix.Text = measuring ? "found so far…" : "of junk found";
         Motion.Count(JunkHeadline, found, v => Fmt.Size((long)v), 700);
-        string d = SelectedDrive.TrimEnd('\\');
+        string d = ShortDrive;
         bool system = string.Equals(SelectedDrive, JunkScanner.SystemDrive, StringComparison.OrdinalIgnoreCase);
         JunkSummary.Text = measuring
             ? $"Checking {d} for temp files, caches, the Recycle Bin and more."
@@ -141,12 +153,12 @@ public partial class MainWindow
         JunkScanButton.IsEnabled = true;
         UpdateJunkSummary();
         UpdateSummary(SelectedDrive);
-        TaskEnd($"Clean up finished: {Fmt.Size(freedTotal)} freed on {SelectedDrive.TrimEnd('\\')}.");
+        TaskEnd($"Clean up finished: {Fmt.Size(freedTotal)} freed on {ShortDrive}.");
         long left = items.Sum(i => i.Size);
         AppDialog.Result(this, "Clean up complete", Fmt.Size(freedTotal), "freed",
             left > 0
                 ? $"{Fmt.Size(left)} was skipped because it's in use or needs administrator rights. Close open apps (or use Fast mode, which runs as admin) and clean again to get it."
-                : $"{SelectedDrive.TrimEnd('\\')} now has {Fmt.Size(_driveFree)} free.",
+                : $"{ShortDrive} now has {Fmt.Size(_driveFree)} free.",
             results);
     }
 

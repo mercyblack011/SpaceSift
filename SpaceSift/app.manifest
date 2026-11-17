@@ -4,8 +4,8 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <!-- Runs as a normal user. Fast (MFT) mode relaunches itself elevated on request. -->
-        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+        <!-- Always runs as administrator: full control (fast MFT scans, Windows folders, force delete, all apps). -->
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

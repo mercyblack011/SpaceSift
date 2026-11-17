@@ -23,12 +23,22 @@
     <Copyright>Copyright © 2026 mercyblack011</Copyright>
     <AssemblyName>SpaceSift</AssemblyName>
     <RootNamespace>SpaceSift</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Product>SpaceSift Disk Analyzer</Product>
 
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
+
+    <!-- Smaller download, same features: SpaceSift's UI is English, so the 18 translated .NET/WPF message
+         folders (cs, de, ja …, ~9 MB) aren't shipped, and package debug symbols (.pdb) aren't copied. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <Target Name="DropPackageSymbols" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Resource Include="Assets\logo.png" />

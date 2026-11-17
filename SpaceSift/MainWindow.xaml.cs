@@ -17,7 +17,8 @@ namespace SpaceSift;
 
 public partial class MainWindow : Window
 {
-    private sealed record DriveItem(string Label, string Root) { public override string ToString() => Label; }
+    /// <summary>An entry of the drive list: a drive letter ("C:\") or a phone storage ("phone:…").</summary>
+    private sealed record DriveItem(string Label, string Root, PhoneVolume? Phone = null) { public override string ToString() => Label; }
     private sealed record CategoryItem(string Label, FileCategory Value) { public override string ToString() => Label; }
     private sealed record Crumb(string Name, int Index, string Sep);
 
@@ -59,20 +60,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         TreeList.ItemsSource = _rows;
 
-        foreach (var d in DriveInfo.GetDrives())
-        {
-            try
-            {
-                if (!d.IsReady) continue;
-                string label = string.IsNullOrWhiteSpace(d.VolumeLabel) ? (d.DriveType == DriveType.Fixed ? "Local Disk" : d.DriveType.ToString()) : d.VolumeLabel;
-                DriveBox.Items.Add(new DriveItem($"[{d.Name.TrimEnd('\\')}] {label}", d.Name));
-            }
-            catch { /* drive vanished */ }
-        }
-        DriveBox.SelectedIndex = 0;
-        for (int i = 0; i < DriveBox.Items.Count; i++)
-            if (((DriveItem)DriveBox.Items[i]).Root.StartsWith(Path.GetPathRoot(Environment.SystemDirectory) ?? "C:", StringComparison.OrdinalIgnoreCase))
-                DriveBox.SelectedIndex = i;
+        LoadLetterDrives(selectRoot: JunkScanner.SystemDrive);
 
         foreach (FileCategory c in Enum.GetValues<FileCategory>())
             CategoryBox.Items.Add(new CategoryItem(c == FileCategory.All ? "All files" : c.ToString(), c));
@@ -110,7 +98,7 @@ public partial class MainWindow : Window
         Motion.FadeOnTextChange(StatusText);
         Motion.FadeOnTextChange(PageSub);
         UpdateSummary(((DriveItem?)DriveBox.SelectedItem)?.Root);
-        DriveBox.SelectionChanged += (_, _) => { if (IsLoaded) DriveBox_Changed(); };
+        DriveBox.SelectionChanged += (_, _) => { if (IsLoaded && !_rebuildingDrives) DriveBox_Changed(); };
     }
 
     private async void OnLoaded(object? sender, RoutedEventArgs e)
@@ -118,6 +106,8 @@ public partial class MainWindow : Window
         UpdateEmptyStates(false);
         WireDonut();
         UpdateConvertList();
+        EnableElevatedFileDrop();
+        WatchDevices();
         // SpaceSift.exe --convert a.png b.jpg : open the Convert page with the format donut for those files
         {
             var a = Environment.GetCommandLineArgs();
@@ -164,7 +154,15 @@ public partial class MainWindow : Window
 
     private async Task StartScan(string root, bool mft)
     {
-        bool isDriveRoot = Path.GetPathRoot(root)?.Equals(root, StringComparison.OrdinalIgnoreCase) == true;
+        // a phone storage ("phone:…") is read through the Windows shell; fast mode is for NTFS drives only
+        var phone = PhoneStorage.IsPhoneKey(root) ? _phones.FirstOrDefault(p => p.Key == root) : null;
+        if (PhoneStorage.IsPhoneKey(root) && phone == null)
+        {
+            AppDialog.Alert(this, "The phone isn't connected anymore", "Connect it again in \"File transfer\" mode and unlock it, then press Refresh.", DialogKind.Warning);
+            return;
+        }
+        if (phone != null) mft = false;
+        bool isDriveRoot = phone == null && Path.GetPathRoot(root)?.Equals(root, StringComparison.OrdinalIgnoreCase) == true;
         if (mft && (!isDriveRoot || !MftScanner.IsNtfs(root)))
         {
             StatusText.Text = "Fast mode needs an NTFS drive root; using normal scan.";
@@ -198,9 +196,9 @@ public partial class MainWindow : Window
         var ct = _scanCts.Token;
         var progress = new ScanProgress();
         SetBusy(true);
-        TaskBegin($"Scanning {root.TrimEnd('\\')}");
+        TaskBegin($"Scanning {(phone != null ? phone.Device : root.TrimEnd('\\'))}");
         // real percentage: MFT records read, or bytes found vs. the drive's used space
-        long usedBytes = 0;
+        long usedBytes = phone != null ? phone.Total - phone.Free : 0;
         if (isDriveRoot && NativeMethods.GetDiskFreeSpaceExW(root, out _, out ulong tot, out ulong totFree)) usedBytes = (long)(tot - totFree);
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         var sw = Stopwatch.StartNew();
@@ -230,7 +228,9 @@ public partial class MainWindow : Window
                     result = null;
                 }
             }
-            result ??= await Task.Run(() => DirectoryScanner.Scan(root, progress, ct));
+            result ??= phone != null
+                ? await Task.Run(() => PhoneStorage.Scan(phone, progress, ct))
+                : await Task.Run(() => DirectoryScanner.Scan(root, progress, ct));
         }
         catch (OperationCanceledException)
         {
@@ -268,11 +268,11 @@ public partial class MainWindow : Window
         bool empty = _scan == null;
         foreach (var (panel, title, button, idle) in new[]
         {
-            (MapEmpty, MapEmptyTitle, MapEmptyButton, $"Map {SelectedDrive.TrimEnd('\\')}"),
-            (FilesEmpty, FilesEmptyTitle, FilesEmptyButton, $"See every file on {SelectedDrive.TrimEnd('\\')}"),
+            (MapEmpty, MapEmptyTitle, MapEmptyButton, $"Map {ShortDrive}"),
+            (FilesEmpty, FilesEmptyTitle, FilesEmptyButton, $"See every file on {ShortDrive}"),
         })
         {
-            title.Text = busy ? $"Scanning {SelectedDrive.TrimEnd('\\')}…" : idle;
+            title.Text = busy ? $"Scanning {ShortDrive}…" : idle;
             button.IsEnabled = !busy;
             // hide the empty panels behind the card so the page reads as one clean message
             if (panel.Parent is Panel host)
@@ -303,7 +303,7 @@ public partial class MainWindow : Window
 
     private void LoadResult(ScanResult r, bool fromCache = false)
     {
-        string drive = Path.GetPathRoot(r.RootPath) ?? r.RootPath;
+        string drive = r.Key ?? Path.GetPathRoot(r.RootPath) ?? r.RootPath;
         _scansByDrive[drive] = r;
         // a folder scanned on another partition switches the whole app to that partition
         if (!string.Equals(drive, SelectedDrive, StringComparison.OrdinalIgnoreCase))
@@ -338,8 +338,18 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(root)) return;
         try
         {
-            string? drive = Path.GetPathRoot(root);
-            if (drive == null || !NativeMethods.GetDiskFreeSpaceExW(drive, out ulong avail, out ulong total, out ulong totalFree)) return;
+            ulong avail, total, totalFree;
+            var phone = PhoneStorage.IsPhoneKey(root) ? _phones.FirstOrDefault(p => p.Key == root) : null;
+            if (phone != null)
+            {
+                // a phone storage reports its size through the shell
+                total = (ulong)phone.Total; avail = totalFree = (ulong)Math.Max(0, phone.Free);
+            }
+            else
+            {
+                string? drive = Path.GetPathRoot(root);
+                if (drive == null || !NativeMethods.GetDiskFreeSpaceExW(drive, out avail, out total, out totalFree)) return;
+            }
             ulong used = total - totalFree, reserved = totalFree - avail;
             Motion.CountBytes(SumTotal, (long)total);
             Motion.CountBytes(SumUsed, (long)used);
@@ -553,7 +563,19 @@ public partial class MainWindow : Window
     private void TreeList_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (TreeList.SelectedItem is not TreeRow row) return;
-        if (row.IsDir) Toggle(row); else ShellOps.Open(_scan!.GetPath(row.Index));
+        if (row.IsDir) Toggle(row);
+        else if (_scan!.IsPhone) ShowPhoneItem(row.Index);
+        else ShellOps.Open(_scan.GetPath(row.Index));
+    }
+
+    /// <summary>Phone storage: shows the item's folder in File Explorer (Windows opens phone files from there).</summary>
+    private void ShowPhoneItem(int index)
+    {
+        if (_scan?.PhoneParsingPath is not { } storage) return;
+        var names = new List<string>();
+        for (int p = index; p > ScanResult.Root; p = _scan.Entries[p].Parent) names.Insert(0, _scan.GetName(p));
+        try { PhoneStorage.ShowInExplorer(storage, names, lastIsFile: !_scan.IsDir(index)); }
+        catch (Exception ex) { AppDialog.Alert(this, "Couldn't open the phone folder", ex.Message + "\n\nUnlock the phone and allow file access, then try again.", DialogKind.Warning); }
     }
 
     private void TreeList_KeyDown(object sender, KeyEventArgs e)
@@ -846,7 +868,8 @@ public partial class MainWindow : Window
 
     private void FileList_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FileList.SelectedItem is FileRow r && _scan != null) ShellOps.Open(_scan.GetPath(r.Index));
+        if (FileList.SelectedItem is not FileRow r || _scan == null) return;
+        if (_scan.IsPhone) ShowPhoneItem(r.Index); else ShellOps.Open(_scan.GetPath(r.Index));
     }
 
     private void FileList_KeyDown(object sender, KeyEventArgs e)
@@ -868,12 +891,15 @@ public partial class MainWindow : Window
 
     private static MenuItem Item(string header, string glyph, Action click, bool enabled = true)
     {
-        var mi = new MenuItem
-        {
-            Header = header,
-            IsEnabled = enabled,
-            Icon = new TextBlock { Text = glyph, FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"] },
-        };
+        // "eraser" = the Font Awesome eraser shape (Force delete); anything else is a Segoe Fluent Icons glyph
+        object icon = glyph == "eraser"
+            ? new System.Windows.Shapes.Path
+            {
+                Data = (Geometry)Application.Current.Resources["EraserIcon"], Stretch = Stretch.Uniform, Width = 14, Height = 12,
+                Fill = (Brush)Application.Current.FindResource("Text"),
+            }
+            : new TextBlock { Text = glyph, FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"] };
+        var mi = new MenuItem { Header = header, IsEnabled = enabled, Icon = icon };
         mi.Click += (_, _) => click();
         return mi;
     }
@@ -887,6 +913,22 @@ public partial class MainWindow : Window
         string firstPath = s.GetPath(first);
         bool single = sel.Count == 1;
         long size = TopLevel(sel).Sum(i => s.Entries[i].Size);
+
+        if (s.IsPhone)
+        {
+            // phone storage is view-only: Windows offers browsing and copying for it, not normal deletion
+            menu.Items.Add(Item("Show in Explorer", "", () => ShowPhoneItem(first), single));
+            menu.Items.Add(Item(single ? "Copy path" : $"Copy {sel.Count} paths", "", () => ShellOps.CopyPath(sel.Select(s.GetPath))));
+            if (single && s.IsDir(first))
+            {
+                menu.Items.Add(new Separator());
+                if (fromTreemap) menu.Items.Add(Item("Find in tree", "", () => RevealInTree(first)));
+                menu.Items.Add(Item("Zoom treemap here", "", () => { Treemap.SetRoot(first); UpdateBreadcrumb(); }));
+            }
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item("Phone storage is view-only", "", () => { }, false));
+            return true;
+        }
 
         menu.Items.Add(Item("Open", "", () => ShellOps.Open(firstPath), single));
         menu.Items.Add(Item("Show in Explorer", "", () => ShellOps.ShowInExplorer(firstPath)));
@@ -909,7 +951,7 @@ public partial class MainWindow : Window
         bool canDelete = !sel.Contains(ScanResult.Root);
         menu.Items.Add(Item($"Delete to Recycle Bin ({Fmt.Size(size)})", "", () => Delete(sel, false), canDelete));
         menu.Items.Add(Item("Delete permanently…", "", () => Delete(sel, true), canDelete));
-        menu.Items.Add(Item("Force delete (close apps using it)…", "",
+        menu.Items.Add(Item("Force delete (close apps using it)…", "eraser",
             () => RunForceDelete(TopLevel(sel).Where(i => i != ScanResult.Root).Select(s.GetPath).ToList(),
                                  p => { int k = s.FindPath(p); return k >= 0 ? s.Entries[k].Size : 0; }), canDelete));
         return true;
@@ -933,6 +975,13 @@ public partial class MainWindow : Window
     {
         if (_scan == null || sel.Count == 0) return;
         var s = _scan;
+        if (s.IsPhone)
+        {
+            AppDialog.Alert(this, "Phone storage is view-only",
+                "Windows doesn't let apps delete files on a phone connected in File transfer mode the normal way. Right-click → Show in Explorer opens the folder, where you can delete them.",
+                DialogKind.Info);
+            return;
+        }
         var items = TopLevel(sel).Where(i => i != ScanResult.Root).ToList();
         if (items.Count == 0) return;
         long total = items.Sum(i => s.Entries[i].Size);

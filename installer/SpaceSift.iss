@@ -5,7 +5,7 @@
 ; Build:  ISCC.exe installer\SpaceSift.iss   (after: dotnet publish ... -o publish)
 
 #define AppName      "SpaceSift"
-#define AppVersion   "1.3.0"
+#define AppVersion   "1.4.0"
 #define AppPublisher "mercyblack011"
 #define AppURL       "https://github.com/mercyblack011/SpaceSift"
 #define AppExe       "SpaceSift.exe"
@@ -66,7 +66,8 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; shellexec: SpaceSift always runs as administrator, so it must be started through the shell to show the UAC prompt
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallDelete]
 ; settings and error log the app writes for this user

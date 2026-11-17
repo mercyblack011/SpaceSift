@@ -21,8 +21,8 @@ Go to [Releases](https://github.com/mercyblack011/SpaceSift/releases/latest) and
 
 | File | What it is |
 |---|---|
-| `SpaceSift-Setup-1.3.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
-| `SpaceSift-1.3.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
+| `SpaceSift-Setup-1.4.0-x64.exe` | **Installer.** Adds Start menu and desktop shortcuts and an uninstaller in Settings › Apps. Installs for your user without an admin prompt. |
+| `SpaceSift-1.4.0-x64-portable.exe` | **Portable.** One file, runs without installing. |
 
 No .NET install is needed; everything is included.
 
@@ -35,7 +35,9 @@ No .NET install is needed; everything is included.
 - **Disk Map**: folder tree sorted by size, file types as list / pie / donut, and a treemap where every block is a file. Double-click to zoom in.
 - **Files**: every file on the drive with search, size and date filters, and file-type icons.
 - **Disk Map** draws a cushion treemap: every file is a lit block, every folder has a title bar with its name and size.
-- **Partitions**: pick a drive in the sidebar and Clean Up, Disk Map and Files show results for that drive only. Apps always lists every program on the PC.
+- **Partitions, USB drives and phones**: pick a drive in the sidebar and Clean Up, Disk Map and Files show results for that drive only. Pendrives and SD cards appear as soon as they are plugged in. Phones connected in "File transfer" mode appear too (view-only: Disk Map and Files show what fills them; a whole phone is read in about a minute). Apps always lists every program on the PC.
+- **Refresh** (top right): finds new drives and phones, updates free space, junk and apps, and scans the shown drive again.
+- **Runs as administrator** so every feature has full access (fast scans, Windows folders, force delete). Windows asks once each time it starts.
 - **Organize**: pick a messy folder (Downloads, Desktop …) and SpaceSift sorts its files into plainly named folders with their size, like `Audio (5 GB)`, `Pictures (1.2 GB)`, `PDF files (400 MB)`. Running it again merges new files in and updates the sizes. One click undoes it. Afterwards it finds files with identical content (checked byte for byte) and offers to move the extra copies to the Recycle Bin. Right-click a folder in Disk Map to organize it.
 - **Convert**: change a file into another format, offline (pictures, PDF, Word, Excel, PowerPoint, e-books, archives; video and audio after a one-time FFmpeg download). Drop files on the Convert page or right-click a file and choose Convert: a ring of the formats that fit opens at the cursor, and the new file is saved next to the original. Powered by [Filee](https://github.com/KnifeLemon/Filee)'s engine.
 - **Force delete**: delete any file or folder even when a program is using it. SpaceSift shows which programs hold it open, closes them, then deletes it (as admin, stubborn files are removed at the next restart).
@@ -89,3 +91,5 @@ built from source at commit `fd693b4` (`build/fetch-filee.ps1`). The format ring
 Filee's design. Filee's own dependencies (ImageMagick via Magick.NET, PDFsharp, PDFium, SkiaSharp, SharpCompress and others)
 keep their licences, listed in Filee's [THIRD-PARTY-NOTICES.md](https://github.com/KnifeLemon/Filee/blob/main/THIRD-PARTY-NOTICES.md).
 Optional engines (FFmpeg, LibreOffice, Ghostscript …) are only downloaded when you ask for them.
+
+The Force delete eraser icon is from [Font Awesome Free](https://fontawesome.com/license/free) 6.5.2 (CC BY 4.0).

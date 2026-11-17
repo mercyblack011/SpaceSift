@@ -158,7 +158,7 @@ public partial class MainWindow
             ? "No program is using these files right now. They will be deleted permanently (not to the Recycle Bin)."
             : $"{lockers.Count} program(s) are using these files. SpaceSift will close them (unsaved work in them is lost), then delete the files permanently.";
         if (!AppDialog.Confirm(this, $"Force delete {paths.Count:N0} item(s), {Fmt.Size(total)}?", msg + " This cannot be undone.",
-                lockers.Count == 0 ? "Delete permanently" : "Close programs and delete", DialogKind.Danger, lines, danger: true))
+                lockers.Count == 0 ? "Delete permanently" : "Close programs and delete", DialogKind.Erase, lines, danger: true))
         {
             TaskEnd("Force delete cancelled.", false);
             return;
@@ -210,7 +210,7 @@ public partial class MainWindow
     /// <summary>Header "Force delete" button: pick any files or a folder anywhere.</summary>
     private void ForceDeleteMenu_Click(object sender, RoutedEventArgs e)
     {
-        int k = AppDialog.Show(this, DialogKind.Danger, "Force delete",
+        int k = AppDialog.Show(this, DialogKind.Erase, "Force delete",
             "Deletes a file or folder permanently, even when a program is using it. SpaceSift shows which programs hold it open, closes them, then deletes it. " +
             "You can also right-click anything in Disk Map or Files.",
             new[] { "Cancel", "Choose a folder…", "Choose files…" }, defaultButton: 2);
