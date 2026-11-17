@@ -408,6 +408,64 @@ public static class InstalledApps
         return (total, newest);
     }
 
+    /// <summary>
+    /// Running processes that belong to the app: their exe lives in the app's install folder
+    /// (or the folder of its icon / uninstaller when the install folder isn't recorded).
+    /// </summary>
+    public static List<LockingProcess> FindRunning(AppInfo app)
+    {
+        var dirs = new List<string>();
+        void AddDir(string? d)
+        {
+            if (string.IsNullOrWhiteSpace(d)) return;
+            d = d.Trim().Trim('"').TrimEnd('\\');
+            if (d.Length < 4 || !Directory.Exists(d) || IsSystemDir(d)) return;
+            if (!dirs.Contains(d, StringComparer.OrdinalIgnoreCase)) dirs.Add(d);
+        }
+        if (app.HasFolder) AddDir(app.InstallLocation);
+        else
+        {
+            AddDir(Path.GetDirectoryName(ExtractExe(app.DisplayIcon) ?? ""));
+            AddDir(Path.GetDirectoryName(ExtractExe(app.UninstallString) ?? ""));
+        }
+        var found = new List<LockingProcess>();
+        if (dirs.Count == 0) return found;
+        int self = Environment.ProcessId;
+        foreach (var p in Process.GetProcesses())
+        {
+            using (p)
+            {
+                if (p.Id == self || p.Id <= 4) continue;
+                string? path = ExePath(p.Id);
+                if (path == null) continue;
+                if (dirs.Any(d => path.StartsWith(d + "\\", StringComparison.OrdinalIgnoreCase)))
+                    found.Add(new LockingProcess(p.Id, p.ProcessName, path, false));
+            }
+        }
+        return found;
+    }
+
+    /// <summary>Full exe path of a process; works for elevated processes too (limited-information access).</summary>
+    private static string? ExePath(int pid)
+    {
+        IntPtr h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, pid);
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            var sb = new System.Text.StringBuilder(1024);
+            int len = sb.Capacity;
+            return QueryFullProcessImageName(h, 0, sb, ref len) ? sb.ToString(0, len) : null;
+        }
+        finally { CloseHandle(h); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(int access, bool inherit, int pid);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(IntPtr h, int flags, System.Text.StringBuilder name, ref int size);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr h);
+
     /// <summary>Starts the app's own uninstaller and waits for it to finish.</summary>
     public static async Task<bool> UninstallAsync(AppInfo app)
     {
@@ -431,10 +489,53 @@ public static class InstalledApps
             if (exe > 0) { file = cmd[..(exe + 4)]; args = cmd[(exe + 4)..].Trim(); }
             else { file = cmd; args = ""; }
         }
+        // NSIS uninstallers (KMPlayer, VLC, many others) copy themselves to %TEMP%, start the copy and exit at once.
+        // "_?=<folder>" is NSIS's own switch to run in place, so the process we wait for is the real uninstaller.
+        if (IsNsis(file) && !args.Contains("_?=", StringComparison.Ordinal))
+        {
+            string? dir = Path.GetDirectoryName(file);
+            if (!string.IsNullOrEmpty(dir)) args = (args + " _?=" + dir).Trim();
+        }
+
+        var before = new HashSet<int>(Process.GetProcesses().Select(x => { try { return x.Id; } finally { x.Dispose(); } }));
+        var started = DateTime.Now;
         using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = true });
         if (p == null) return false;
         await p.WaitForExitAsync();
+
+        // other uninstallers hand off to a helper too (Inno "_iu14D2N.tmp", "Au_.exe", "Un_A.exe", msiexec …):
+        // keep waiting while a new process that looks like an uninstaller is still running
+        int quiet = 0;
+        while (quiet < 3 && DateTime.Now - started < TimeSpan.FromHours(2))
+        {
+            await Task.Delay(1000);
+            bool helper = false;
+            foreach (var x in Process.GetProcesses())
+            {
+                using (x)
+                {
+                    if (before.Contains(x.Id)) continue;
+                    if (HelperName.IsMatch(x.ProcessName)) { helper = true; break; }
+                }
+            }
+            quiet = helper ? 0 : quiet + 1;
+        }
         return true;
+    }
+
+    private static readonly Regex HelperName = new(@"^(au_|un_?a|un\d*|_iu\w*|.*uninst.*|.*uninstall.*|.*setup.*|msiexec|.*\.tmp)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>True when the exe is a Nullsoft (NSIS) installer/uninstaller.</summary>
+    private static bool IsNsis(string exe)
+    {
+        try
+        {
+            if (!File.Exists(exe) || new FileInfo(exe).Length > 64L << 20) return false;
+            var bytes = File.ReadAllBytes(exe);
+            var sig = System.Text.Encoding.ASCII.GetBytes("Nullsoft");
+            return bytes.AsSpan().IndexOf(sig) >= 0;
+        }
+        catch { return false; }
     }
 
     // ---------------------------------------------------------------- leftover folders

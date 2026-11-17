@@ -17,12 +17,15 @@ public partial class UninstallDialog : Window
 
     private readonly List<Choice> _choices;
 
-    public UninstallDialog(AppInfo app, List<RelatedItem> related)
+    public UninstallDialog(AppInfo app, List<RelatedItem> related, int runningCount = 0)
     {
         InitializeComponent();
         AppIcon.Source = app.Icon;
         TitleText.Text = $"Uninstall {app.Name}?";
         SubText.Text = string.Join(" · ", new[] { app.Publisher, app.Version, app.Size > 0 ? app.SizeText : "" }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (runningCount > 0)
+            SubText.Text += (SubText.Text.Length > 0 ? "\n" : "") + $"It is running now ({runningCount} process{(runningCount == 1 ? "" : "es")}). SpaceSift will close it first; unsaved work in it is lost.";
+        SubText.TextWrapping = TextWrapping.Wrap;
         // registry keys are cleaned by the uninstaller itself; only offer things on disk
         _choices = related.Where(r => r.CanDelete).Select(r => new Choice { Item = r }).ToList();
         foreach (var c in _choices) c.PropertyChanged += (_, _) => UpdateTexts();
@@ -78,6 +81,10 @@ public partial class UninstallDialog : Window
         OkText.Text = RemoveConnected ? $"Uninstall + remove {Fmt.Size(total)}" : "Uninstall";
     }
 
-    private void Ok_Click(object sender, RoutedEventArgs e) => DialogResult = true;
+    private void Ok_Click(object sender, RoutedEventArgs e)
+    {
+        // a second click while the dialog is already closing must not crash
+        try { DialogResult = true; } catch (InvalidOperationException) { }
+    }
 }
 

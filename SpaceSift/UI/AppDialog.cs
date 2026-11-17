@@ -45,14 +45,14 @@ public sealed class AppDialog : Window
         var accent = kind switch
         {
             DialogKind.Success => "Accent",
-            DialogKind.Danger => "Danger",
+            DialogKind.Danger => "Accent", // theme yellow, not red: the app's highlight colour for important moments
             DialogKind.Warning => "Accent",
             _ => "Mark",
         };
         string glyph = kind switch
         {
             DialogKind.Success => "",  // check
-            DialogKind.Danger => "",   // delete
+            DialogKind.Danger => "",   // trash bin, in the theme's yellow
             DialogKind.Warning => "",  // warning
             DialogKind.Question => "", // help
             _ => "",                   // info
@@ -69,6 +69,11 @@ public sealed class AppDialog : Window
             RenderTransform = new ScaleTransform(1, 1),
         };
         icon.SetResourceReference(TextBlock.ForegroundProperty, accent);
+        // every popup: solid yellow circle with a black icon (trash bin, check, warning, question, info)
+        fill.SetResourceReference(Shape.FillProperty, "Accent");
+        fill.Opacity = 1;
+        ring.StrokeThickness = 0;
+        icon.Foreground = Brushes.Black;
         badge.Children.Add(fill); badge.Children.Add(ring); badge.Children.Add(icon);
         stack.Children.Add(badge);
 

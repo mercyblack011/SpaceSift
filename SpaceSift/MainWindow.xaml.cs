@@ -11,6 +11,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using SpaceSift.Core;
 using SpaceSift.UI;
+using ThemeMode = SpaceSift.Core.ThemeMode; // .NET 10 WPF has its own System.Windows.ThemeMode
 
 namespace SpaceSift;
 
@@ -115,6 +116,20 @@ public partial class MainWindow : Window
     private async void OnLoaded(object? sender, RoutedEventArgs e)
     {
         UpdateEmptyStates(false);
+        WireDonut();
+        UpdateConvertList();
+        // SpaceSift.exe --convert a.png b.jpg : open the Convert page with the format donut for those files
+        {
+            var a = Environment.GetCommandLineArgs();
+            int c = Array.IndexOf(a, "--convert");
+            if (c >= 0 && c + 1 < a.Length)
+            {
+                Tabs.SelectedItem = TabConvert;
+                var files = a.Skip(c + 1).TakeWhile(x => !x.StartsWith("--")).ToList();
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+                OpenDonut(files);
+            }
+        }
         // relaunched elevated: SpaceSift.exe --scan C: --mft
         var args = Environment.GetCommandLineArgs();
         int k = Array.IndexOf(args, "--scan");
@@ -676,6 +691,7 @@ public partial class MainWindow : Window
             2 => ("Disk Map", _scan == null ? $"See exactly what fills {d}" : $"What fills {_scan.RootPath}"),
             3 => ("Files", _scan == null ? $"Every file on {d}" : $"Every file in {_scan.RootPath}, searchable and sortable"),
             4 => ("Organize", "Sort a messy folder into tidy folders by file type"),
+            5 => ("Convert", "Change a file into another format, offline"),
             _ => ("About", "SpaceSift Disk Studio"),
         };
     }
@@ -718,7 +734,7 @@ public partial class MainWindow : Window
         ThemeGlyph.Text = ThemeManager.IsDark ? "" : "";   // show what you switch TO
         ThemeText.Text = ThemeManager.IsDark ? "Light mode" : "Dark mode";
         _syncingTheme = true;
-        (ThemeManager.Mode switch { ThemeMode.Light => ThemeLight, ThemeMode.Dark => ThemeDark, _ => ThemeSystem }).IsChecked = true;
+        (ThemeManager.Mode switch { Core.ThemeMode.Light => ThemeLight, Core.ThemeMode.Dark => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         _syncingTheme = false;
         Treemap.Invalidate();
         ExtChart.InvalidateVisual();
@@ -881,6 +897,13 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             if (fromTreemap) menu.Items.Add(Item("Find in tree", "", () => RevealInTree(first)));
             menu.Items.Add(Item("Zoom treemap here", "", () => { Treemap.SetRoot(first); UpdateBreadcrumb(); }));
+            menu.Items.Add(Item("Organize this folder…", "", () => OpenOrganizer(firstPath), first != ScanResult.Root));
+        }
+        if (sel.All(i => !s.IsDir(i)))
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item(single ? "Convert…" : $"Convert {sel.Count} files…", "",
+                () => ConvertFromMenu(sel.Select(s.GetPath).ToList())));
         }
         menu.Items.Add(new Separator());
         bool canDelete = !sel.Contains(ScanResult.Root);

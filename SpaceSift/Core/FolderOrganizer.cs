@@ -180,6 +180,68 @@ public static class FolderOrganizer
         return back;
     }
 
+    /// <summary>Renames "Audio (5 GB)"-style folders whose size changed (e.g. after deleting duplicates), keeping undo working.</summary>
+    public static void RefreshFolderNames(string folder, OrganizeResult? last)
+    {
+        foreach (var d in new DirectoryInfo(folder).EnumerateDirectories())
+        {
+            var m = OurFolder.Match(d.Name);
+            if (!m.Success) continue;
+            string name = m.Groups["name"].Value;
+            if (!Kinds.Any(k => k.Name == name) && name != OtherKind.Name) continue;
+            string target = Path.Combine(folder, $"{name} ({Fmt.Size(FolderSize(d.FullName))})");
+            if (string.Equals(target, d.FullName, StringComparison.OrdinalIgnoreCase) || Directory.Exists(target)) continue;
+            try { Directory.Move(d.FullName, target); } catch { continue; }
+            if (last == null) continue;
+            string old = d.FullName;
+            for (int i = 0; i < last.Moves.Count; i++)
+                if (last.Moves[i].To.StartsWith(old + "\\", StringComparison.OrdinalIgnoreCase))
+                    last.Moves[i] = last.Moves[i] with { To = target + last.Moves[i].To.Substring(old.Length) };
+            int c = last.CreatedFolders.FindIndex(x => string.Equals(x, old, StringComparison.OrdinalIgnoreCase));
+            if (c >= 0) last.CreatedFolders[c] = target;
+            if (last.Renamed.Remove(old, out var before)) last.Renamed[target] = before;
+        }
+    }
+
+    /// <summary>
+    /// Files with exactly the same content (same size, then same SHA-256), in groups of 2+.
+    /// The first file in each group is the one to keep: the plainest name ("photo.jpg" over
+    /// "photo (2).jpg" or "photo - Copy.jpg"), then the oldest.
+    /// </summary>
+    public static List<List<string>> FindDuplicates(IEnumerable<string> files, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        var infos = files.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(f => { try { return new FileInfo(f); } catch { return null; } })
+            .Where(f => f is { Exists: true, Length: > 0 }).Cast<FileInfo>().ToList();
+        var sameSize = infos.GroupBy(f => f.Length).Where(g => g.Count() > 1).ToList();
+        int total = sameSize.Sum(g => g.Count()), done = 0;
+        var result = new List<List<string>>();
+        foreach (var bySize in sameSize)
+        {
+            var byHash = new Dictionary<string, List<FileInfo>>();
+            foreach (var f in bySize)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    using var s = new FileStream(f.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 20);
+                    string h = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s));
+                    if (!byHash.TryGetValue(h, out var l)) byHash[h] = l = new List<FileInfo>();
+                    l.Add(f);
+                }
+                catch { /* unreadable: never call it a duplicate */ }
+                progress?.Report(++done / (double)Math.Max(1, total));
+            }
+            foreach (var g in byHash.Values.Where(l => l.Count > 1))
+                result.Add(g.OrderBy(f => CopyPenalty(f.Name)).ThenBy(f => f.Name.Length).ThenBy(f => f.CreationTimeUtc)
+                            .Select(f => f.FullName).ToList());
+        }
+        return result.OrderByDescending(g => new FileInfo(g[0]).Length * (g.Count - 1)).ToList();
+    }
+
+    private static readonly Regex CopyName = new(@"(\s\(\d+\)|\s-\s?copy(\s\(\d+\))?|\scopy(\s\d+)?|_copy|\s-\s\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static int CopyPenalty(string name) => CopyName.IsMatch(Path.GetFileNameWithoutExtension(name)) ? 1 : 0;
+
     private static string Unique(string path)
     {
         if (!File.Exists(path) && !Directory.Exists(path)) return path;

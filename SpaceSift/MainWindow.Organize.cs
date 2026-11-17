@@ -18,14 +18,21 @@ public partial class MainWindow
         if (_orgFolder != null) dlg.InitialDirectory = _orgFolder;
         else dlg.InitialDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (dlg.ShowDialog(this) != true) return;
-        if (FolderOrganizer.Blocked(dlg.FolderName) is string why)
+        OpenOrganizer(dlg.FolderName);
+    }
+
+    /// <summary>Opens the Organize page on a folder (from the folder picker or a right-click in Disk Map / Files).</summary>
+    private void OpenOrganizer(string folder)
+    {
+        if (FolderOrganizer.Blocked(folder) is string why)
         {
             AppDialog.Alert(this, "This folder can't be organized",
-                $"{dlg.FolderName} is {why}. Moving its files would break Windows or your apps. Pick a folder of your own files, like Downloads, Desktop or a folder on another drive.",
+                $"{folder} is {why}. Moving its files would break Windows or your apps. Pick a folder of your own files, like Downloads, Desktop or a folder on another drive.",
                 DialogKind.Warning);
             return;
         }
-        _orgFolder = dlg.FolderName;
+        _orgFolder = folder;
+        if (Tabs.SelectedItem != TabOrganize) Tabs.SelectedItem = TabOrganize;
         _ = OrgRefresh();
     }
 
@@ -84,7 +91,19 @@ public partial class MainWindow
             return;
         }
         _orgLast = result; _orgLastFolder = folder;
-        TaskEnd($"Organized {result.Moved:N0} files in {folder}.");
+
+        // look for files with identical content inside the folders we just filled
+        var sortedDirs = result.Moves.Select(m => Path.GetDirectoryName(m.To)!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        List<List<string>> dupes;
+        try
+        {
+            TaskProgress(0.97, "Checking for duplicate files…");
+            var dupProgress = new Progress<double>(f => TaskProgress(0.97 + f * 0.03, "Checking for duplicate files…"));
+            dupes = await Task.Run(() => FolderOrganizer.FindDuplicates(
+                sortedDirs.SelectMany(d => { try { return Directory.EnumerateFiles(d).ToList(); } catch { return new List<string>(); } }), dupProgress));
+        }
+        catch { dupes = new(); }
+        TaskEnd($"Organized {result.Moved:N0} files in {folder}." + (dupes.Count > 0 ? $" Found {dupes.Sum(g => g.Count - 1):N0} duplicate file(s)." : ""));
 
         // show the folders with their final names
         var made = Directory.EnumerateDirectories(folder)
@@ -97,8 +116,53 @@ public partial class MainWindow
                 : $"{result.Failed.Count} file(s) were in use and stayed where they were. Close the programs using them and organize again.",
             new[] { "Open folder", "Done" }, made, defaultButton: 1,
             bigValue: result.Moved.ToString("N0"), bigCaption: result.Moved == 1 ? "file sorted" : "files sorted");
+        if (dupes.Count > 0) await AskDeleteDuplicates(folder, dupes);
         if (k == 0) ShellOps.Open(folder);
         await OrgRefresh();
+    }
+
+    /// <summary>Lists every set of identical files and offers to send the extra copies to the Recycle Bin.</summary>
+    private async Task AskDeleteDuplicates(string folder, List<List<string>> dupes)
+    {
+        int extra = dupes.Sum(g => g.Count - 1);
+        long waste = dupes.Sum(g => { try { return new FileInfo(g[0]).Length * (g.Count - 1); } catch { return 0L; } });
+        string Rel(string p) => p.StartsWith(folder, StringComparison.OrdinalIgnoreCase) ? p.Substring(folder.Length).TrimStart('\\') : p;
+        var lines = new List<DialogLine>();
+        foreach (var g in dupes.Take(40))
+        {
+            string size = Fmt.Size(new FileInfo(g[0]).Length);
+            lines.Add(new DialogLine(Rel(g[0]), "keep", ""));
+            foreach (var d in g.Skip(1)) lines.Add(new DialogLine("    " + Rel(d), $"duplicate · {size}", ""));
+        }
+        if (dupes.Count > 40) lines.Add(new DialogLine($"… and {dupes.Count - 40} more sets"));
+
+        int k = AppDialog.Show(this, DialogKind.Warning,
+            $"Found {extra:N0} duplicate file{(extra == 1 ? "" : "s")}",
+            "These files have exactly the same content as another file (checked byte for byte, not just by name). " +
+            "In each set, the file marked \"keep\" stays and the copies below it can be deleted. Deleted copies go to the Recycle Bin.",
+            new[] { "Keep all", "Delete duplicates" }, lines, defaultButton: 0, dangerButton: 1,
+            bigValue: Fmt.Size(waste), bigCaption: "wasted on copies");
+        if (k != 1) { ShowToast("Duplicates kept."); return; }
+
+        var toDelete = dupes.SelectMany(g => g.Skip(1)).ToList();
+        TaskBegin("Deleting duplicates");
+        TaskCreep(0.9, 2);
+        await Task.Yield();
+        NativeMethods.RecycleBin(new System.Windows.Interop.WindowInteropHelper(this).Handle, toDelete);
+        var left = toDelete.Where(File.Exists).ToList();
+        long freed = waste - left.Sum(f => { try { return new FileInfo(f).Length; } catch { return 0L; } });
+        TaskEnd($"Moved {toDelete.Count - left.Count:N0} duplicate file(s), {Fmt.Size(freed)}, to the Recycle Bin.");
+
+        // the folder names show their size, so bring them up to date
+        await Task.Run(() => FolderOrganizer.RefreshFolderNames(folder, _orgLast));
+        UpdateSummary(SelectedDrive);
+        if (left.Count == 0)
+            AppDialog.Result(this, "Duplicates removed", Fmt.Size(freed), "freed",
+                $"{toDelete.Count:N0} extra copies were moved to the Recycle Bin. One copy of each file was kept.");
+        else
+            AppDialog.Alert(this, "Some duplicates could not be deleted",
+                "They are in use. Close the programs using them and try again, or right-click them in Files and choose Force delete.",
+                DialogKind.Warning, AppDialog.Paths(left));
     }
 
     private async void OrgUndo_Click(object sender, RoutedEventArgs e)

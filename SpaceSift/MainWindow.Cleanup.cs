@@ -210,9 +210,11 @@ public partial class MainWindow
             _ => a => a.Size,
         };
         var sorted = (_appDesc ? list.OrderByDescending(key) : list.OrderBy(key)).ToList();
-        var selected = AppList.SelectedItem;
+        // keep the same program selected after a reload (matched by its registry key); if it was uninstalled, nothing is selected
+        var selected = AppList.SelectedItem as AppInfo;
         AppList.ItemsSource = sorted;
-        if (selected != null && sorted.Contains(selected)) AppList.SelectedItem = selected;
+        var again = selected == null ? null : sorted.FirstOrDefault(a => a.RegistryKey == selected.RegistryKey);
+        if (again != null) AppList.SelectedItem = again;
         AppsSummary.Text = $"{sorted.Count:N0} programs installed · {Fmt.Size(sorted.Sum(a => a.Size))}";
     }
 
@@ -232,6 +234,18 @@ public partial class MainWindow
         UninstallButton.IsEnabled = a?.CanUninstall == true;
         AppFolderButton.IsEnabled = a?.HasFolder == true;
         if (a != null) _ = ShowRelated(a);
+        else ClearRelated();
+    }
+
+    /// <summary>Empties the "Files of selected app" panel (nothing selected, or the app was just uninstalled).</summary>
+    private void ClearRelated()
+    {
+        _relatedCts?.Cancel();
+        RelatedIcon.Source = null;
+        RelatedTitle.Text = "Select an app above";
+        RelatedSummary.Text = "Its install folder, app data, shortcuts and registry entry will be listed here.";
+        RelatedList.ItemsSource = null;
+        RelatedOpenButton.IsEnabled = RelatedExplorerButton.IsEnabled = RelatedDeleteButton.IsEnabled = false;
     }
 
     // ---------------- files connected to the selected app
@@ -334,13 +348,33 @@ public partial class MainWindow
         List<RelatedItem> related;
         try { related = await Task.Run(() => InstalledApps.FindRelated(app, CancellationToken.None)); }
         catch { related = new List<RelatedItem>(); }
+        var running = await Task.Run(() => InstalledApps.FindRunning(app));
         StopCreep();
         TaskProgress(0.1, "Choose how to uninstall…");
 
-        var dlg = new UninstallDialog(app, related) { Owner = this };
+        var dlg = new UninstallDialog(app, related, running.Count) { Owner = this };
         if (dlg.ShowDialog() != true) { UninstallButton.IsEnabled = true; TaskEnd("Uninstall cancelled.", false); return; }
         bool removeConnected = dlg.RemoveConnected;
         var toRemove = removeConnected ? dlg.SelectedItems : new List<RelatedItem>();
+
+        // a running program can't be uninstalled cleanly: close it first
+        running = await Task.Run(() => InstalledApps.FindRunning(app));
+        if (running.Count > 0)
+        {
+            TaskProgress(0.11, $"Closing {app.Name}…");
+            await Task.Run(() => ForceDelete.CloseProcesses(running));
+            await Task.Delay(600);
+            var still = await Task.Run(() => InstalledApps.FindRunning(app));
+            if (still.Count > 0)
+            {
+                // usually a program running as administrator, which a normal app isn't allowed to close
+                int k = AppDialog.Show(this, DialogKind.Warning, $"{app.Name} is still running",
+                    "SpaceSift couldn't close it, probably because it runs as administrator. Close it yourself (or from Task Manager), then press Continue.",
+                    new[] { "Cancel", "Continue" }, still.Select(p => new DialogLine(p.Path, $"PID {p.Id}", "")).ToList(), defaultButton: 1);
+                if (k != 1) { UninstallButton.IsEnabled = true; TaskEnd("Uninstall cancelled.", false); return; }
+            }
+            else ShowToast($"Closed {app.Name}");
+        }
 
         // step 1: the program's own uninstaller (10% → 70%; its progress is unknown, so the bar eases toward 70%)
         TaskProgress(0.12, $"Running the {app.Name} uninstaller. Follow its window if it asks anything…");
@@ -367,6 +401,12 @@ public partial class MainWindow
         await LoadApps();
         bool stillThere = _apps.Any(a => a.RegistryKey == app.RegistryKey);
         TaskProgress(0.8);
+        if (!stillThere)
+        {
+            // the program is gone, so its "Files of selected app" info goes too
+            AppList.SelectedItem = null;
+            ClearRelated();
+        }
 
         if (stillThere)
         {

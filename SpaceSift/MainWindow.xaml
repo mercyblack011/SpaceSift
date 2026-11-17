@@ -129,6 +129,9 @@
                             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="Organize" FontWeight="SemiBold"/></StackPanel>
                         </ListBoxItem>
                         <ListBoxItem>
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8AB;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="Convert" FontWeight="SemiBold"/></StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
                             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE946;" Style="{StaticResource Icon}" FontSize="15" Width="26"/><TextBlock Text="About" FontWeight="SemiBold"/></StackPanel>
                         </ListBoxItem>
                     </ListBox>
@@ -841,6 +844,82 @@
                     </Grid>
                 </TabItem>
 
+                <!-- ======================= CONVERT (Filee engine) ======================= -->
+                <TabItem x:Name="TabConvert" Header="Convert">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="*" MinHeight="400"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+                        <!-- drop zone: files dropped here open the format donut where they land -->
+                        <Border x:Name="ConvertDrop" Style="{StaticResource Card}" AllowDrop="True" Background="{DynamicResource Surface}"
+                                DragEnter="ConvertDrop_DragEnter" DragOver="ConvertDrop_DragEnter" DragLeave="ConvertDrop_DragLeave" Drop="ConvertDrop_Drop">
+                            <Grid>
+                                <Border x:Name="ConvertDropGlow" CornerRadius="18" BorderThickness="2" BorderBrush="{DynamicResource Accent}" Opacity="0" Margin="-1"/>
+                                <StackPanel x:Name="ConvertDropContent" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520">
+                                    <Border Width="92" Height="92" CornerRadius="46" Background="{DynamicResource Accent}" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5" x:Name="ConvertBadge">
+                                        <Border.RenderTransform><ScaleTransform/></Border.RenderTransform>
+                                        <TextBlock Text="&#xE8AB;" Style="{StaticResource Icon}" FontSize="38" Foreground="Black" HorizontalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Drop files to convert" Style="{StaticResource H1}" FontSize="26" HorizontalAlignment="Center" Margin="0,20,0,0"/>
+                                    <TextBlock x:Name="ConvertHint" Style="{StaticResource Sub}" TextAlignment="Center" Margin="0,8,0,0" FontSize="13.5"
+                                               Text="Pictures, PDF, Word, Excel, PowerPoint, e-books, archives, video and audio. A ring of formats opens where you drop; pick one. The new file is saved next to the original, which is never changed."/>
+                                    <Button Style="{StaticResource Primary}" Click="ConvertChoose_Click" HorizontalAlignment="Center" Margin="0,22,0,0" Padding="24,11">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8E5;" Style="{StaticResource Icon}" Margin="0,0,9,0"/><TextBlock Text="Choose files" FontSize="14"/></StackPanel>
+                                    </Button>
+                                    <TextBlock Style="{StaticResource Sub}" TextAlignment="Center" Margin="0,14,0,0" FontSize="11.5" Foreground="{DynamicResource Dimmed}"
+                                               Text="Tip: right-click any file in Files or Disk Map and choose Convert. Tab or the mouse wheel flips the ring to more formats."/>
+                                </StackPanel>
+                                <!-- the format ring (Filee's donut) lives inside this card -->
+                                <ui:DonutMenu x:Name="Donut" Dim="False" Visibility="Collapsed" ClipToBounds="True"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- recent conversions -->
+                        <DockPanel Grid.Row="1" Margin="4,18,4,8">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource Ghost}" Click="ConvertClear_Click" x:Name="ConvertClearButton" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE894;" Style="{StaticResource Icon}" Margin="0,0,7,0"/><TextBlock Text="Clear list"/></StackPanel>
+                            </Button>
+                            <TextBlock Text="Recent conversions" Style="{StaticResource H2}" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="6" MaxHeight="260">
+                            <Grid>
+                                <TextBlock x:Name="ConvertEmpty" Text="Nothing converted yet." Foreground="{DynamicResource Muted}" Margin="14,12"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="ConvertRecent">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border x:Name="Row" CornerRadius="12" Padding="12,9" Margin="2" Background="Transparent">
+                                                    <DockPanel>
+                                                        <Border DockPanel.Dock="Left" Width="36" Height="36" CornerRadius="18" Background="{Binding BadgeBrush}" Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="15" Foreground="Black" HorizontalAlignment="Center"/>
+                                                        </Border>
+                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <Button Style="{StaticResource Ghost}" Click="ConvertOpen_Click" Tag="{Binding}" Visibility="{Binding OpenVisibility}" ToolTip="Open the new file">
+                                                                <TextBlock Text="&#xE8E5;" Style="{StaticResource Icon}"/>
+                                                            </Button>
+                                                            <Button Style="{StaticResource Ghost}" Click="ConvertShow_Click" Tag="{Binding}" Visibility="{Binding OpenVisibility}" ToolTip="Show in Explorer">
+                                                                <TextBlock Text="&#xE838;" Style="{StaticResource Icon}"/>
+                                                            </Button>
+                                                        </StackPanel>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding Detail}" Foreground="{DynamicResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" ToolTip="{Binding Detail}"/>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </Border>
+                                                <DataTemplate.Triggers>
+                                                    <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover}"/>
+                                                    </Trigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
                 <!-- ======================= ABOUT ======================= -->
                 <TabItem Header="About">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -916,6 +995,13 @@
                                         <TextBlock Style="{StaticResource Sub}" Text="Link hover animation ported from " VerticalAlignment="Center"/>
                                         <Button Style="{StaticResource SkiperLink}" Content="Skiper UI · skiper40" Tag="https://skiper-ui.com" Click="ExternalLink_Click"/>
                                         <TextBlock Style="{StaticResource Sub}" Text=" (free version, attribution required)." VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,6,0,0">
+                                        <TextBlock Style="{StaticResource Sub}" Text="File conversion engine and format-ring design from " VerticalAlignment="Center"/>
+                                        <Button Style="{StaticResource SkiperLink}" Content="Filee" Tag="https://github.com/KnifeLemon/Filee" Click="ExternalLink_Click"/>
+                                        <TextBlock Style="{StaticResource Sub}" Text=" — MIT License, Copyright (c) Filee contributors. Its third-party libraries (ImageMagick, PDFsharp, SkiaSharp and others) keep their own licences; see " VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <Button Style="{StaticResource SkiperLink}" Content="third-party notices" Tag="https://github.com/KnifeLemon/Filee/blob/main/THIRD-PARTY-NOTICES.md" Click="ExternalLink_Click"/>
+                                        <TextBlock Style="{StaticResource Sub}" Text="." VerticalAlignment="Center"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>
